@@ -1,75 +1,130 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+import requests
+import os
+
+load_dotenv()
 
 app = FastAPI(
-    title="Wonderful Places API"
+    title="Tourist Route API",
+    version="1.0"
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+ORS_API_KEY = os.getenv("ORS_API_KEY")
 
-PLACES = {
-    "17.4062,78.4691": {
+HYDERABAD_LAT = 17.3850
+HYDERABAD_LNG = 78.4867
+
+PLACES = [
+    {
         "name": "Birla Mandir",
-        "distance": "4 km",
-        "duration": "10 mins",
-        "location": "Hill Fort Road, Hyderabad"
+        "lat": 17.4062,
+        "lng": 78.4691,
+        "address": "Hill Fort Road, Hyderabad"
     },
-    "17.3833,78.4011": {
+    {
         "name": "Golconda Fort",
-        "distance": "12 km",
-        "duration": "28 mins",
-        "location": "Khair Complex, Hyderabad"
+        "lat": 17.3833,
+        "lng": 78.4011,
+        "address": "Khair Complex, Hyderabad"
     },
-    "17.2543,78.6808": {
+    {
         "name": "Ramoji Film City",
-        "distance": "35 km",
-        "duration": "50 mins",
-        "location": "Abdullapurmet, Hyderabad"
+        "lat": 17.2543,
+        "lng": 78.6808,
+        "address": "Abdullapurmet, Hyderabad"
     },
-    "17.3616,78.4747": {
+    {
         "name": "Charminar",
-        "distance": "5 km",
-        "duration": "15 mins",
-        "location": "Old City, Hyderabad"
+        "lat": 17.3616,
+        "lng": 78.4747,
+        "address": "Old City, Hyderabad"
     },
-    "17.4239,78.4738": {
+    {
         "name": "Hussain Sagar",
-        "distance": "6 km",
-        "duration": "18 mins",
-        "location": "Tank Bund, Hyderabad"
+        "lat": 17.4239,
+        "lng": 78.4738,
+        "address": "Tank Bund, Hyderabad"
     }
-}
+]
 
 
 @app.get("/")
 def home():
-    return {
-        "message": "Wonderful Places API Running"
-    }
+    return {"message": "Tourist Route API Running"}
+
+
+@app.get("/places")
+def get_places():
+    return PLACES
 
 
 @app.get("/route")
 def get_route(dest_lat: float, dest_lng: float):
 
-    key = f"{dest_lat},{dest_lng}"
+    try:
 
-    if key not in PLACES:
-        return {
-            "error": "Location not found"
+        url = (
+            "https://api.openrouteservice.org/v2/directions/driving-car"
+        )
+
+        headers = {
+            "Authorization": ORS_API_KEY,
+            "Content-Type": "application/json"
         }
 
-    place = PLACES[key]
+        body = {
+            "coordinates": [
+                [HYDERABAD_LNG, HYDERABAD_LAT],
+                [dest_lng, dest_lat]
+            ]
+        }
 
-    return {
-    "place_name": place["name"],
-    "distance": place["distance"],
-    "duration": place["duration"],
-    "location": place["location"],
-    
-}
+        response = requests.post(
+            url,
+            json=body,
+            headers=headers,
+            timeout=30
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        summary = data["routes"][0]["summary"]
+
+        distance_km = round(
+            summary["distance"] / 1000,
+            2
+        )
+
+        duration_min = round(
+            summary["duration"] / 60,
+            2
+        )
+
+        place_name = "Unknown"
+        location = "Hyderabad"
+
+        for place in PLACES:
+            if (
+                abs(place["lat"] - dest_lat) < 0.001
+                and
+                abs(place["lng"] - dest_lng) < 0.001
+            ):
+                place_name = place["name"]
+                location = place["address"]
+                break
+
+        return {
+            "place_name": place_name,
+            "distance": f"{distance_km} KM",
+            "duration": f"{duration_min} Minutes",
+            "location": location
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

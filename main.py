@@ -2,7 +2,6 @@ from fastapi import FastAPI, Query
 from dotenv import load_dotenv
 import os
 from groq import Groq
-import json
 
 # ======================
 # LOAD ENV
@@ -18,7 +17,7 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 # ======================
-# ROOT CHECK
+# ROOT
 # ======================
 @app.get("/")
 def home():
@@ -26,7 +25,7 @@ def home():
 
 
 # ======================
-# AI RECOMMENDATION ENDPOINT
+# AI RECOMMENDATION
 # ======================
 @app.get("/ai-recommend")
 def ai_recommend(city: str = Query(...)):
@@ -34,7 +33,7 @@ def ai_recommend(city: str = Query(...)):
     prompt = f"""
 You are a travel expert AI.
 
-Return ONLY valid JSON (no extra text).
+Return ONLY valid JSON.
 
 Format:
 {{
@@ -50,26 +49,16 @@ Format:
 
 Task:
 Suggest top 5 tourist places in {city}.
-Keep descriptions short and useful.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a strict JSON generator."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": "You output only JSON."},
+            {"role": "user", "content": prompt}
+        ]
+    )
 
-        result = response.choices[0].message.content
-
-        # return raw AI output (frontend will parse)
-        return {
-            "result": result
-        }
-
-    except Exception as e:
-        return {
-            "error": str(e)
-        }
+    return {
+        "result": response.choices[0].message.content
+    }

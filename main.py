@@ -1,64 +1,59 @@
 from fastapi import FastAPI, Query
-from dotenv import load_dotenv
 import os
-from groq import Groq
+import requests
+from dotenv import load_dotenv
 
-# ======================
-# LOAD ENV
-# ======================
 load_dotenv()
 
-app = FastAPI(title="AI Travel Assistant Backend")
+app = FastAPI(title="AI Travel + Real Route API")
 
-# ======================
-# GROQ CLIENT
-# ======================
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+ORS_API_KEY = os.getenv("ORS_API_KEY")
+
+HYDERABAD_LAT = 17.3850
+HYDERABAD_LNG = 78.4867
 
 
-# ======================
-# ROOT
-# ======================
 @app.get("/")
 def home():
-    return {"message": "AI Travel Backend Running"}
+    return {"message": "Backend Running"}
 
 
-# ======================
-# AI RECOMMENDATION
-# ======================
-@app.get("/ai-recommend")
-def ai_recommend(city: str = Query(...)):
+# =========================
+# REAL ROUTE API
+# =========================
+@app.get("/route")
+def get_route(dest_lat: float = Query(...), dest_lng: float = Query(...)):
 
-    prompt = f"""
-You are a travel expert AI.
+    url = "https://api.openrouteservice.org/v2/directions/driving-car"
 
-Return ONLY valid JSON.
+    headers = {
+        "Authorization": ORS_API_KEY,
+        "Content-Type": "application/json"
+    }
 
-Format:
-{{
-  "city": "{city}",
-  "places": [
-    {{
-      "name": "",
-      "description": "",
-      "rating": ""
-    }}
-  ]
-}}
-
-Task:
-Suggest top 5 tourist places in {city}.
-"""
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You output only JSON."},
-            {"role": "user", "content": prompt}
+    body = {
+        "coordinates": [
+            [HYDERABAD_LNG, HYDERABAD_LAT],
+            [dest_lng, dest_lat]
         ]
-    )
+    }
+
+    response = requests.post(url, json=body, headers=headers)
+
+    if response.status_code != 200:
+        return {"error": response.text}
+
+    data = response.json()
+
+    route = data["routes"][0]
+
+    summary = route["summary"]
+    geometry = route["geometry"]
 
     return {
-        "result": response.choices[0].message.content
+        "distance_km": round(summary["distance"] / 1000, 2),
+        "duration_min": round(summary["duration"] / 60, 2),
+        "route_geometry": geometry,   # 🔥 IMPORTANT
+        "from": [HYDERABAD_LAT, HYDERABAD_LNG],
+        "to": [dest_lat, dest_lng]
     }

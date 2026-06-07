@@ -5,24 +5,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="AI Travel + Real Route API")
+app = FastAPI(title="Live Navigation API")
 
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 
-HYDERABAD_LAT = 17.3850
-HYDERABAD_LNG = 78.4867
+START_LAT = 17.3850
+START_LNG = 78.4867
 
 
 @app.get("/")
 def home():
-    return {"message": "Backend Running"}
+    return {"status": "running"}
 
 
-# =========================
-# REAL ROUTE API
-# =========================
-@app.get("/route")
-def get_route(dest_lat: float = Query(...), dest_lng: float = Query(...)):
+@app.get("/navigate")
+def navigate(dest_lat: float = Query(...), dest_lng: float = Query(...)):
 
     url = "https://api.openrouteservice.org/v2/directions/driving-car"
 
@@ -33,7 +30,7 @@ def get_route(dest_lat: float = Query(...), dest_lng: float = Query(...)):
 
     body = {
         "coordinates": [
-            [HYDERABAD_LNG, HYDERABAD_LAT],
+            [START_LNG, START_LAT],
             [dest_lng, dest_lat]
         ]
     }
@@ -44,16 +41,26 @@ def get_route(dest_lat: float = Query(...), dest_lng: float = Query(...)):
         return {"error": response.text}
 
     data = response.json()
-
     route = data["routes"][0]
 
     summary = route["summary"]
+    steps = route["segments"][0]["steps"]
     geometry = route["geometry"]
+
+    instructions = [
+        {
+            "instruction": step["instruction"],
+            "distance": step["distance"],
+            "duration": step["duration"]
+        }
+        for step in steps
+    ]
 
     return {
         "distance_km": round(summary["distance"] / 1000, 2),
         "duration_min": round(summary["duration"] / 60, 2),
-        "route_geometry": geometry,   # 🔥 IMPORTANT
-        "from": [HYDERABAD_LAT, HYDERABAD_LNG],
-        "to": [dest_lat, dest_lng]
+        "geometry": geometry,
+        "instructions": instructions,
+        "start": [START_LAT, START_LNG],
+        "end": [dest_lat, dest_lng]
     }

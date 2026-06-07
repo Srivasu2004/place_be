@@ -5,3 +5,8 @@ requests
 pandas
 folium
 streamlit-folium
+fastapi
+uvicorn
+requests
+python-dotenv
+groq

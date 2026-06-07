@@ -1,116 +1,75 @@
-from fastapi import FastAPI, HTTPException, Query
-import requests
-import os
+from fastapi import FastAPI, Query
 from dotenv import load_dotenv
+import os
+from groq import Groq
+import json
 
+# ======================
+# LOAD ENV
+# ======================
 load_dotenv()
 
-app = FastAPI(title="Hyderabad Tourist Backend API")
+app = FastAPI(title="AI Travel Assistant Backend")
 
 # ======================
-# CONFIG
+# GROQ CLIENT
 # ======================
-ORS_API_KEY = os.getenv("ORS_API_KEY")
-
-HYDERABAD_LAT = 17.3850
-HYDERABAD_LNG = 78.4867
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 # ======================
-# STATIC PLACES
-# ======================
-PLACES = [
-    {"name": "Birla Mandir", "lat": 17.4062, "lng": 78.4691, "address": "Hill Fort Road, Hyderabad"},
-    {"name": "Golconda Fort", "lat": 17.3833, "lng": 78.4011, "address": "Khair Complex, Hyderabad"},
-    {"name": "Ramoji Film City", "lat": 17.2543, "lng": 78.6808, "address": "Abdullapurmet, Hyderabad"},
-    {"name": "Charminar", "lat": 17.3616, "lng": 78.4747, "address": "Old City, Hyderabad"},
-    {"name": "Hussain Sagar", "lat": 17.4239, "lng": 78.4738, "address": "Tank Bund, Hyderabad"},
-]
-
-
-# ======================
-# ROOT
+# ROOT CHECK
 # ======================
 @app.get("/")
 def home():
-    return {
-        "status": "success",
-        "message": "Hyderabad Tourist API is running"
-    }
+    return {"message": "AI Travel Backend Running"}
 
 
 # ======================
-# GET ALL PLACES
+# AI RECOMMENDATION ENDPOINT
 # ======================
-@app.get("/places")
-def get_places():
-    return PLACES
+@app.get("/ai-recommend")
+def ai_recommend(city: str = Query(...)):
 
+    prompt = f"""
+You are a travel expert AI.
 
-# ======================
-# GET ROUTE DETAILS
-# ======================
-@app.get("/route")
-def get_route(
-    dest_lat: float = Query(...),
-    dest_lng: float = Query(...)
-):
+Return ONLY valid JSON (no extra text).
 
-    if not ORS_API_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="ORS_API_KEY not found in environment"
-        )
+Format:
+{{
+  "city": "{city}",
+  "places": [
+    {{
+      "name": "",
+      "description": "",
+      "rating": ""
+    }}
+  ]
+}}
 
-    url = "https://api.openrouteservice.org/v2/directions/driving-car"
-
-    headers = {
-        "Authorization": ORS_API_KEY,
-        "Content-Type": "application/json"
-    }
-
-    body = {
-        "coordinates": [
-            [HYDERABAD_LNG, HYDERABAD_LAT],
-            [dest_lng, dest_lat]
-        ]
-    }
+Task:
+Suggest top 5 tourist places in {city}.
+Keep descriptions short and useful.
+"""
 
     try:
-        response = requests.post(url, json=body, headers=headers, timeout=20)
-        response.raise_for_status()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a strict JSON generator."},
+                {"role": "user", "content": prompt}
+            ]
+        )
 
-        data = response.json()
+        result = response.choices[0].message.content
 
-        summary = data["routes"][0]["summary"]
-
-        distance_km = round(summary["distance"] / 1000, 2)
-        duration_min = round(summary["duration"] / 60, 2)
-
-        # match place name
-        place_name = "Unknown"
-        location = "Hyderabad"
-
-        for place in PLACES:
-            if abs(place["lat"] - dest_lat) < 0.001 and abs(place["lng"] - dest_lng) < 0.001:
-                place_name = place["name"]
-                location = place["address"]
-                break
-
+        # return raw AI output (frontend will parse)
         return {
-            "place_name": place_name,
-            "distance": f"{distance_km} KM",
-            "duration": f"{duration_min} mins",
-            "location": location,
-            "from": "Hyderabad",
-            "to": {
-                "lat": dest_lat,
-                "lng": dest_lng
-            }
+            "result": result
         }
 
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Route API failed: {str(e)}"
-        )
+    except Exception as e:
+        return {
+            "error": str(e)
+        }
